@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HTML Code Runner</title>
+  <style>
+    :root{--bg:#0f1720;--panel:#0b1220;--muted:#9aa4b2;--accent:#60a5fa}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#071029 0%,#07121b 100%);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    .app{display:grid;grid-template-columns:1fr 420px;grid-template-rows:64px 1fr;gap:12px;height:100vh;padding:12px;box-sizing:border-box}
+    header{grid-column:1/-1;display:flex;align-items:center;gap:12px;color:white}
+    header h1{font-size:16px;margin:0}
+    .controls{margin-left:auto;display:flex;gap:8px}
+    button{background:var(--accent);border:none;color:#04263a;padding:8px 12px;border-radius:6px;cursor:pointer}
+    .editor-area{display:flex;flex-direction:column;gap:8px;padding:8px;background:var(--panel);border-radius:8px;color:#e6eef6}
+    .editors{display:grid;grid-template-columns:1fr 1fr;gap:8px;height:100%}
+    .editor{display:flex;flex-direction:column;border-radius:6px;background:#041426;overflow:hidden}
+    .editor label{padding:8px;font-size:13px;color:var(--muted)}
+    textarea{flex:1;background:#00121b;color:#dbeafe;border:0;padding:10px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Monospace;font-size:13px;resize:none;outline:none}
+    .right-panel{display:flex;flex-direction:column;gap:8px}
+    .preview{flex:1;background:#000;border-radius:6px;overflow:hidden;border:1px solid rgba(255,255,255,0.04)}
+    .console{height:160px;background:#071526;border-radius:6px;padding:8px;color:#cfe5ff;overflow:auto;font-family:ui-monospace;font-size:13px}
+    .toolbar{display:flex;gap:8px}
+    .small{padding:6px 8px;font-size:13px}
+    .muted{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.03)}
+    .hint{font-size:12px;color:var(--muted);margin-left:8px}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>HTML Code Runner</h1>
+      <div class="hint">Edit HTML, CSS, and JS and click Run (or press Ctrl/Cmd+Enter)</div>
+      <div class="controls">
+        <button id="runBtn">Run</button>
+        <button id="downloadBtn" class="small muted">Download</button>
+        <button id="resetBtn" class="small muted">Reset</button>
+      </div>
+    </header>
+
+    <main style="display:flex;gap:12px;grid-row:2;grid-column:1/2;">
+      <div class="editor-area" style="flex:1;min-width:0;">
+        <div class="toolbar">
+          <div style="color:var(--muted);padding:6px 8px">HTML</div>
+          <div style="color:var(--muted);padding:6px 8px">CSS</div>
+          <div style="color:var(--muted);padding:6px 8px">JS</div>
+        </div>
+        <div class="editors">
+          <div class="editor" style="grid-column:1/3">
+            <label for="html">HTML</label>
+            <textarea id="html" spellcheck="false"></textarea>
+          </div>
+          <div class="editor">
+            <label for="css">CSS</label>
+            <textarea id="css" spellcheck="false"></textarea>
+          </div>
+          <div class="editor">
+            <label for="js">JavaScript</label>
+            <textarea id="js" spellcheck="false"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <aside class="right-panel" style="width:420px;">
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="color:var(--muted)">Preview</div>
+          <div style="margin-left:auto;display:flex;gap:6px">
+            <label style="color:var(--muted);font-size:13px;align-items:center;display:flex"><input type="checkbox" id="autoRun" style="margin-right:6px">Auto-run</label>
+          </div>
+        </div>
+        <div class="preview">
+          <iframe id="preview" title="preview" sandbox="allow-scripts" style="width:100%;height:100%;border:0;background:white"></iframe>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="color:var(--muted);font-size:13px">Console</div>
+          <button id="clearConsole" class="small muted">Clear</button>
+        </div>
+        <div id="console" class="console"></div>
+      </aside>
+    </main>
+
+  </div>
+
+  <script>
+    // Simple HTML/CSS/JS runner
+    const htmlEl = document.getElementById('html');
+    const cssEl = document.getElementById('css');
+    const jsEl = document.getElementById('js');
+    const runBtn = document.getElementById('runBtn');
+    const preview = document.getElementById('preview');
+    const consoleEl = document.getElementById('console');
+    const autoRun = document.getElementById('autoRun');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const clearConsoleBtn = document.getElementById('clearConsole');
+
+    const sampleHTML = "<h2 style='color:#0369a1'>Hello from the HTML Runner</h2>\n<p>Edit the HTML, CSS, and JS panels and click Run.</p>";
+    const sampleCSS = "body{font-family:Inter,system-ui,Segoe UI,Roboto,Arial;background:#f8fafc;color:#061124;padding:16px;}";
+    const sampleJS = "console.log('JS running — try console.log, errors will appear here.');";
+
+    function setSample(){ htmlEl.value = sampleHTML; cssEl.value = sampleCSS; jsEl.value = sampleJS; }
+    setSample();
+
+    function buildDocument(){
+      const doc = `<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">`+
+        `<style>${cssEl.value}</style>`+
+        `</head><body>${htmlEl.value}`+
+        `<script>
+          // capture runtime errors and forward console logs to parent
+          (function(){
+            function send(type,args){
+              try{ parent.postMessage({type:type,args:Array.from(args)}, '*'); }catch(e){}
+            }
+            const _log = console.log; console.log = function(){ send('log', arguments); _log.apply(console, arguments); };
+            const _err = console.error; console.error = function(){ send('error', arguments); _err.apply(console, arguments); };
+            window.addEventListener('error', function(e){ send('error', [e.message + ' at ' + e.filename + ':' + e.lineno + ':' + e.colno]); });
+          })();
+        <\/script>`+
+        `<script>${jsEl.value} <\/script>`+
+        `</body></html>`;
+      return doc;
+    }
+
+    function run(){
+      const doc = buildDocument();
+      // Use blob to avoid about:blank reload caching issues
+      const blob = new Blob([doc], {type: 'text/html'});
+      const url = URL.createObjectURL(blob);
+      preview.src = url;
+      // revoke previous blobs after a short delay
+      setTimeout(()=>{ URL.revokeObjectURL(url); }, 20000);
+    }
+
+    runBtn.addEventListener('click', run);
+    downloadBtn.addEventListener('click', ()=>{
+      const doc = buildDocument();
+      const a = document.createElement('a');
+      const blob = new Blob([doc], {type:'text/html'});
+      a.href = URL.createObjectURL(blob);
+      a.download = 'index.html';
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 10000);
+    });
+
+    resetBtn.addEventListener('click', ()=>{ setSample(); if(autoRun.checked) run(); appendConsole('info','Reset to sample code'); });
+    clearConsoleBtn.addEventListener('click', ()=>{ consoleEl.innerHTML = ''; });
+
+    // listen for messages from the iframe
+    window.addEventListener('message', (ev)=>{
+      if(!ev.data || !ev.data.type) return;
+      appendConsole(ev.data.type, ...ev.data.args);
+    });
+
+    function appendConsole(type, ...args){
+      const el = document.createElement('div');
+      el.style.whiteSpace = 'pre-wrap';
+      if(type === 'error') el.style.color = '#ff7b7b';
+      else if(type === 'info') el.style.color = '#cbd5e1';
+      else el.style.color = '#9be7ff';
+      el.textContent = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+      consoleEl.appendChild(el);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+
+    // auto-run when editing
+    [htmlEl, cssEl, jsEl].forEach(el=>{
+      el.addEventListener('input', ()=>{ if(autoRun.checked) run(); });
+    });
+
+    // keyboard shortcut: Ctrl/Cmd+Enter to run
+    window.addEventListener('keydown', (e)=>{
+      if((e.ctrlKey || e.metaKey) && e.key === 'Enter'){
+        e.preventDefault(); run();
+      }
+    });
+
+    // show initial preview
+    run();
+  </script>
+</body>
+</html>
